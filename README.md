@@ -1,25 +1,49 @@
-# Kiku AI Assistant - Project Documentatie
+# 🤖 Kiku AI Assistant
 
-## 👩‍💻 Over Kiku
-Kiku is een geavanceerde, modulaire, open-source AI-assistent / gezelschapsrobot, gebouwd rond een **Raspberry Pi 4**. Het doel is het creëren van een Jarvis-achtige entiteit met **persoonlijkheid**, **langetermijngeheugen** en **visuele intelligentie**.
+**Kiku** is een geavanceerde, persoonlijke AI-assistent ontwikkeld in Python. Ze draait lokaal (op bijvoorbeeld een Raspberry Pi), heeft een langetermijngeheugen en kan zowel zien als horen.
 
-Het project wordt ontwikkeld met nadruk op **kwaliteit, betrouwbaarheid en strikte modulariteit** (Python 3.11+, Raspberry Pi OS "Trixie").
+## ✨ Kenmerken
 
-## 🛠️ Architectuur & Technologie Stack
-* **Besturingssysteem:** Raspberry Pi OS "Trixie" (64-bit)
-* **Hardware:** Raspberry Pi 4 (4GB+), NVMe SSD, USB Audio (Mic/Speaker), Raspberry Pi Camera Module.
-* **Basis Taal:** Python 3 (met gevirtualiseerde omgeving: `venv`).
-* **Audio:** PulseAudio & ALSA (Hardware-Indexen worden HARD gecodeerd in `config.py`).
-* **Vision:** libcamera-stack & GStreamer.
-* **Conversatie:** Natural Language Processing (via Google Gemini API).
+* **🧠 Het Brein:** Aangedreven door Google Gemini (Flash 2.0) voor snelle en slimme antwoorden.
+* **💾 Langetermijngeheugen:** Kiku onthoudt wie je bent, wat je hebt besproken en specifieke feiten (via een lokale SQLite database).
+* **👀 Visie:** Via de camera kan Kiku de wereld om zich heen zien en objecten beschrijven.
+* **🗣️ Spraak:** Volledige spraakinteractie (Speech-to-Text & Text-to-Speech).
+* **🛡️ Stabiliteit:** Modulair opgebouwd met robuuste foutafhandeling (Hufterproof pad-detectie).
 
-## 🗂️️ Modulaire Structuur
-| Bestand | Rol |
-| :--- | :--- |
-| `main.py` | De **App-Entrypoint**. Initialiseert modules en beheert de hoofdloop. |
-| `config.py` | Centrale configuratie. Bevat **HARDWARE-INDEXEN**, API-sleutels, etc. |
-| `modules/audio.py` | Beheert STT/TTS (Spraakherkenning en -synthese) en hardware-validatie. |
-| `modules/vision.py` | Beheert Camera, Objectherkenning en Visuele Analyse. |
-| `modules/brain.py` | De **AI Kern**. Beheert langetermijngeheugen en conversatie. |
-| `modules/tools.py` | Functionele tools (Calendar, Sys-Monitor, News, DJ Modus). |
-| `modules/interface.py` | Beheert de visuele output (Sci-Fi HUD / 3D Model). |
+## 📂 Structuur
+
+* `main.py`: Het startpunt van de applicatie.
+* `modules/brain.py`: De connectie met de Google Gemini API.
+* `modules/memory.py`: Het geheugensysteem (leest/schrijft naar database).
+* `modules/vision.py`: Camerabesturing en beeldverwerking.
+* `data/`: Hier wordt de lokale database (`kiku.db`) opgeslagen.
+* `kluis/`: (Niet op GitHub) Bevat de API-sleutels.
+
+## 🚀 Installatie & Gebruik
+
+1.  **Clone de repository:**
+    ```bash
+    git clone [https://github.com/martend/kiku.git](https://github.com/martend/kiku.git)
+    cd kiku
+    ```
+
+2.  **Virtual Environment:**
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate
+    ```
+
+3.  **Configuratie:**
+    Plaats je Google Cloud credentials in `kluis/kikukey.json`.
+
+4.  **Start Kiku:**
+    ```bash
+    python main.py
+    ```
+
+## 📝 Auteur
+Ontwikkeld door **Martin (Martend)**.
+Projectstatus: *Stabiele V1*.
+
+---
+*Gegenereerd door Kiku - 2025*
