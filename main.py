@@ -1,11 +1,19 @@
 """
-Kiku AI Assistant - Continuous Mode + VISION + MENU
-De definitieve integratie van Oren, Mond, Brein en Ogen.
+Kiku AI Assistant - Continuous Mode + VISION + GUI
+De definitieve integratie.
+Versie: Humanized Logs + Geen Dubbele Output.
 """
 import sys
 import os
 import time
 import threading
+import locale
+import re
+import config
+
+# --- DISPLAY FIX ---
+if os.environ.get('DISPLAY','') == '':
+    os.environ.__setitem__('DISPLAY', ':0')
 
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, PROJECT_ROOT)
@@ -13,114 +21,164 @@ sys.path.insert(0, PROJECT_ROOT)
 from modules.audio import KikuAudio
 from modules.brain import KikuBrain
 from modules.vision import KikuVision
+from modules.gui import KikuUI
 
-# Globale status voor de threads
 STATE = {
     "running": True,
     "mic_active": True
 }
 
-def input_monitor():
-    """Luistert naar toetsenbord input voor microfoon controle."""
-    print("\n---------------------------------------------------")
-    print(" ⌨️  BEDIENINGSPANEEL:")
-    print("     [ENTER]  -> Wissel Microfoon AAN/UIT")
-    print("     'q'      -> Afsluiten")
-    print("---------------------------------------------------\n")
+ui = None
 
+def clean_text_for_speech(text):
+    if not text: return ""
+    cleaned = re.sub(r'[^\x00-\x7F\x80-\xFF]', '', text)
+    return cleaned.strip()
+
+def get_file_size_mb(path):
+    try:
+        size = os.path.getsize(path)
+        return f"({size / 1024:.1f} KB)"
+    except:
+        return ""
+
+def input_monitor():
+    print("\n[TERMINAL] ENTER = Mic Wissel | 'q' = Stoppen.\n")
     while STATE["running"]:
         try:
             user_input = input()
             if user_input.strip().lower() == 'q':
-                print("[MENU] Afsluiten...")
-                STATE["running"] = False
-                STATE["mic_active"] = False
+                stop_kiku()
                 break
-            
             STATE["mic_active"] = not STATE["mic_active"]
-            status_icon = "🟢 AAN" if STATE["mic_active"] else "🔴 UIT (Doof)"
-            print(f"\n[MENU] Microfoon is nu: {status_icon}")
-        except EOFError:
+            status_txt = "Microfoon AAN" if STATE["mic_active"] else "Microfoon UIT"
+            print(f"[MENU] {status_txt}")
+            if ui: ui.update_status(status_txt)
+        except (EOFError, RuntimeError):
             break
 
-def main_loop():
-    print("--- Kiku AI Assistant: Oren & Ogen Online ---")
+def stop_kiku():
+    STATE["running"] = False
+    print("[SYSTEM] Afsluitprocedure gestart...")
+    os._exit(0)
+
+def kiku_backend_logic():
+    time.sleep(1)
     
+    if ui:
+        ui.log("--- Kiku AI: Systemen online ---")
+        ui.update_status("Opstarten...")
+
     try:
-        # Initialiseer alle zintuigen
         audio = KikuAudio()
         brain = KikuBrain()
-        vision = KikuVision() # De Ogen!
+        vision = KikuVision()
     except Exception as e:
-        print(f"[FATAL] Startfout bij initialisatie: {e}")
+        err = f"[FATAL] Startfout: {e}"
+        print(err)
+        if ui: ui.log(err)
         return
 
-    intro = f"Hallo Martin. Mijn ogen zijn geactiveerd. Zeg 'Kijk' of 'Wat zie je' om ze te testen."
-    audio.speak(intro)
+    # Introductie
+    intro_text = f"Hoi {config.USER_NAME}. Ik ben wakker in {config.RESIDENCE}."
+    spoken_intro = clean_text_for_speech(intro_text)
+    
+    if ui:
+        ui.log(f"Kiku > {intro_text}")
+        ui.update_status("Klaar")
+    
+    audio.speak(spoken_intro)
 
-    # Start de toetsenbord monitor
     input_thread = threading.Thread(target=input_monitor, daemon=True)
     input_thread.start()
-    
+
     errors = 0
-    
+
     while STATE["running"]:
         try:
             if STATE["mic_active"]:
-                # Luister naar de gebruiker
-                command = audio.listen_continuous()
+                if ui: ui.update_status("Luisteren...")
                 
+                command = audio.listen_continuous()
+
                 if command:
-                    errors = 0 
-                    
-                    # Stop commando's
+                    errors = 0
+                    # LOG: Alleen wat gehoord is
+                    if ui: ui.log(f"[Audio] 👂 '{command}'")
+
                     if "stop" in command or "slapen" in command:
-                        audio.speak("Ik ga in stand-by.")
-                        # We breken de loop niet helemaal, maar zetten mic uit (optioneel)
-                        # Voor nu sluiten we af zoals gevraagd:
-                        STATE["running"] = False
+                        audio.speak("Tot later.")
+                        stop_kiku()
                         break
-                    
-                    # --- VISION TRIGGER LOGICA ---
+
+                    # Vision
                     image_path = None
-                    # Lijst met triggerwoorden voor de camera
                     vision_triggers = ["kijk", "zie", "zien", "wat is dit", "omschrijf", "beschrijf"]
-                    
-                    # Check of een van de triggers in het commando zit
+
                     if any(trigger in command for trigger in vision_triggers):
-                        audio.speak("Momentje, ik kijk even...") 
-                        # Maak de foto
+                        audio.speak("Momentje...")
+                        if ui: ui.log("[Vision] 📷 Foto maken...")
                         image_path = vision.capture_snapshot()
-                        
                         if not image_path:
-                            audio.speak("Het lukte niet om mijn camera te gebruiken.")
+                            audio.speak("Camera fout.")
+
+                    # Context
+                    if ui: ui.update_status("Nadenken...")
+                    current_time = time.strftime("%H:%M")
+                    current_date = time.strftime("%d-%m-%Y")
                     
-                    # --- VERWERKING ---
-                    # Stuur tekst (en eventueel foto) naar het brein
-                    response = brain.process_command(command, image_path)
+                    context_command = (
+                        f"{command} "
+                        f"[Context: Tijd {current_time}, Datum {current_date}, "
+                        f"Locatie {config.RESIDENCE}, User {config.USER_NAME}.]"
+                    )
+
+                    # Brein
+                    response = brain.process_command(context_command, image_path)
+
+                    # LOGGING: Hier voorkomen we dubbele tekst!
                     
-                    # Spreek het antwoord uit
-                    audio.speak(response)
+                    # 1. Print de leesbare tekst in het scherm
+                    if ui: ui.log(f"Kiku > {response}")
+                    print(f"Kiku > {response}") 
+
+                    # 2. Spreek het uit (maar print de tekst NIET nog eens)
+                    spoken_response = clean_text_for_speech(response)
                     
-                    # Korte pauze zodat ze zichzelf niet hoort
-                    time.sleep(0.5) 
+                    if ui: 
+                        # Alleen een icoontje dat audio start
+                        ui.update_status("Spreken...")
+                    
+                    audio.speak(spoken_response)
+                    
+                    if ui: ui.update_status("Klaar")
+                    time.sleep(0.5)
             else:
-                # Mic is uit, rustige loop
+                if ui: ui.update_status("Microfoon UIT")
                 time.sleep(0.5)
 
-        except KeyboardInterrupt:
-            print("\n[STOP] Geforceerd gestopt.")
-            STATE["running"] = False
-            break
         except Exception as e:
-            print(f"\n[FOUT in Main Loop] {e}")
+            print(f"[FOUT] {e}")
             errors += 1
-            if errors > 10: 
-                print("[CRITICAL] Te veel fouten. Pauze...")
+            if errors > 10:
                 time.sleep(2)
                 errors = 0
 
-    print("[SYSTEM] Kiku is afgesloten.")
+def main():
+    global ui
+    try:
+        ui = KikuUI(on_close_callback=stop_kiku)
+    except Exception as e:
+        print(f"\n[CRITICAL ERROR] GUI Startfout: {e}")
+        sys.exit(1)
+    
+    backend_thread = threading.Thread(target=kiku_backend_logic, daemon=True)
+    backend_thread.start()
+    
+    try:
+        ui.start()
+    except KeyboardInterrupt:
+        stop_kiku()
 
 if __name__ == "__main__":
-    main_loop()
+    main()
