@@ -1,17 +1,9 @@
-"""
-Kiku AI Assistant - Continuous Mode + VISION + GUI
-De definitieve integratie.
-Versie: Humanized Logs + Geen Dubbele Output.
-"""
 import sys
 import os
 import time
 import threading
-import locale
-import re
 import config
 
-# --- DISPLAY FIX ---
 if os.environ.get('DISPLAY','') == '':
     os.environ.__setitem__('DISPLAY', ':0')
 
@@ -22,28 +14,19 @@ from modules.audio import KikuAudio
 from modules.brain import KikuBrain
 from modules.vision import KikuVision
 from modules.gui import KikuUI
+from modules.calendar_kiku import KikuCalendar
 
-STATE = {
-    "running": True,
-    "mic_active": True
-}
-
+STATE = {"running": True, "mic_active": True}
 ui = None
+calendar = None
 
 def clean_text_for_speech(text):
     if not text: return ""
+    import re
     cleaned = re.sub(r'[^\x00-\x7F\x80-\xFF]', '', text)
     return cleaned.strip()
 
-def get_file_size_mb(path):
-    try:
-        size = os.path.getsize(path)
-        return f"({size / 1024:.1f} KB)"
-    except:
-        return ""
-
 def input_monitor():
-    print("\n[TERMINAL] ENTER = Mic Wissel | 'q' = Stoppen.\n")
     while STATE["running"]:
         try:
             user_input = input()
@@ -52,103 +35,129 @@ def input_monitor():
                 break
             STATE["mic_active"] = not STATE["mic_active"]
             status_txt = "Microfoon AAN" if STATE["mic_active"] else "Microfoon UIT"
-            print(f"[MENU] {status_txt}")
             if ui: ui.update_status(status_txt)
-        except (EOFError, RuntimeError):
+        except:
             break
 
 def stop_kiku():
     STATE["running"] = False
-    print("[SYSTEM] Afsluitprocedure gestart...")
+    print("[SYSTEM] Afsluiten...")
     os._exit(0)
 
+def calendar_watcher(audio_module):
+    while STATE["running"]:
+        if calendar:
+            try:
+                reminders = calendar.check_upcoming_reminders()
+                for msg in reminders:
+                    if ui: ui.log(f"[Agenda] 🔔 {msg}")
+                    audio_module.speak(msg)
+                    time.sleep(5)
+            except:
+                pass
+        time.sleep(60)
+
 def kiku_backend_logic():
+    global calendar
     time.sleep(1)
-    
-    if ui:
-        ui.log("--- Kiku AI: Systemen online ---")
-        ui.update_status("Opstarten...")
+    if ui: ui.log("--- Kiku AI: Systeem Start (Dual Vision Mode) ---")
 
     try:
         audio = KikuAudio()
         brain = KikuBrain()
         vision = KikuVision()
+        try:
+            calendar = KikuCalendar()
+            if ui: ui.log("✅ Agenda verbonden!")
+        except Exception as e:
+            if ui: ui.log(f"⚠️ Agenda werkt niet: {e}")
     except Exception as e:
-        err = f"[FATAL] Startfout: {e}"
-        print(err)
-        if ui: ui.log(err)
+        if ui: ui.log(f"[FATAL] {e}")
         return
 
-    # Introductie
-    intro_text = f"Hoi {config.USER_NAME}. Ik ben wakker in {config.RESIDENCE}."
-    spoken_intro = clean_text_for_speech(intro_text)
-    
+    if calendar:
+        threading.Thread(target=calendar_watcher, args=(audio,), daemon=True).start()
+
+    intro_text = f"Hoi {config.USER_NAME}. Ik ben er klaar voor."
     if ui:
         ui.log(f"Kiku > {intro_text}")
         ui.update_status("Klaar")
-    
-    audio.speak(spoken_intro)
+    audio.speak(intro_text)
 
-    input_thread = threading.Thread(target=input_monitor, daemon=True)
-    input_thread.start()
-
-    errors = 0
+    threading.Thread(target=input_monitor, daemon=True).start()
 
     while STATE["running"]:
         try:
             if STATE["mic_active"]:
                 if ui: ui.update_status("Luisteren...")
-                
                 command = audio.listen_continuous()
 
                 if command:
-                    errors = 0
-                    # LOG: Alleen wat gehoord is
-                    if ui: ui.log(f"[Audio] 👂 '{command}'")
-
-                    if "stop" in command or "slapen" in command:
-                        audio.speak("Tot later.")
-                        stop_kiku()
-                        break
-
-                    # Vision
+                    # --- VISION LOGICA (GESPLITST) ---
                     image_path = None
-                    vision_triggers = ["kijk", "zie", "zien", "wat is dit", "omschrijf", "beschrijf"]
+                    vision_mode = None # 'general' of 'document'
+                    
+                    # Lijsten met triggerwoorden
+                    triggers_doc = ["scan", "lees", "document", "baxter", "medicijn", "brief", "tekst"]
+                    triggers_general = ["kijk", "zie", "zien", "wat is dit", "omschrijf", "beschrijf"]
 
-                    if any(trigger in command for trigger in vision_triggers):
-                        audio.speak("Momentje...")
-                        if ui: ui.log("[Vision] 📷 Foto maken...")
+                    # 1. Check eerst op DOCUMENT SCAN (Specifieker)
+                    if any(word in command for word in triggers_doc):
+                        vision_mode = "document"
+                        audio.speak("Oké, document scannen. Houd het 5 seconden stil voor de camera.")
+                        preview_time = 5
+                        
+                    # 2. Check anders op ALGEMENE BLIK
+                    elif any(word in command for word in triggers_general):
+                        vision_mode = "general"
+                        audio.speak("Ik kijk even mee...")
+                        preview_time = 2
+
+                    # Als we gaan kijken (in welke modus dan ook):
+                    if vision_mode:
+                        if ui: 
+                            ui.update_status(f"Camera ({vision_mode})...")
+                            ui.log(f"[Vision] 🎥 Start preview ({preview_time}s)...")
+                        
+                        # Start Preview (Overlay)
+                        vision.start_camera_preview(duration=preview_time)
+                        
+                        # Maak Foto
+                        audio.speak("Klik!")
                         image_path = vision.capture_snapshot()
+                        
                         if not image_path:
-                            audio.speak("Camera fout.")
+                            audio.speak("Mijn camera liet me in de steek.")
+                            vision_mode = None # Abort
 
-                    # Context
+                    # --- CONTEXT & PROMPT BOUWEN ---
                     if ui: ui.update_status("Nadenken...")
                     current_time = time.strftime("%H:%M")
-                    current_date = time.strftime("%d-%m-%Y")
                     
-                    context_command = (
-                        f"{command} "
-                        f"[Context: Tijd {current_time}, Datum {current_date}, "
-                        f"Locatie {config.RESIDENCE}, User {config.USER_NAME}.]"
-                    )
+                    agenda_text = ""
+                    if calendar:
+                        events = calendar.get_week_preview()
+                        if events:
+                            agenda_text = "Agenda: " + ", ".join([f"{e['summary']} op {e['start'].get('dateTime', e['start'].get('date'))}" for e in events[:3]])
 
-                    # Brein
-                    response = brain.process_command(context_command, image_path)
+                    # Basis Context
+                    system_context = f"Systeem: Tijd {current_time}. {agenda_text}. Locatie {config.RESIDENCE}."
 
-                    # LOGGING: Hier voorkomen we dubbele tekst!
-                    
-                    # 1. Print de leesbare tekst in het scherm
+                    # Specifieke instructies toevoegen op basis van modus
+                    if vision_mode == "document":
+                        system_context += " [SCAN MODUS: De gebruiker toont een document (zoals een medicijnzakje/baxter of brief). Lees ALLE tekst, datums en tijden nauwkeurig. Vat samen wat er moet gebeuren.]"
+                    elif vision_mode == "general":
+                        system_context += " [KIJK MODUS: Beschrijf kort wat je ziet in de ruimte of wat de gebruiker vasthoudt.]"
+
+                    full_command = f"{command} [{system_context}]"
+
+                    response = brain.process_command(full_command, image_path)
+
                     if ui: ui.log(f"Kiku > {response}")
                     print(f"Kiku > {response}") 
 
-                    # 2. Spreek het uit (maar print de tekst NIET nog eens)
                     spoken_response = clean_text_for_speech(response)
-                    
-                    if ui: 
-                        # Alleen een icoontje dat audio start
-                        ui.update_status("Spreken...")
-                    
+                    if ui: ui.update_status("Spreken...")
                     audio.speak(spoken_response)
                     
                     if ui: ui.update_status("Klaar")
@@ -159,21 +168,15 @@ def kiku_backend_logic():
 
         except Exception as e:
             print(f"[FOUT] {e}")
-            errors += 1
-            if errors > 10:
-                time.sleep(2)
-                errors = 0
 
 def main():
     global ui
     try:
         ui = KikuUI(on_close_callback=stop_kiku)
-    except Exception as e:
-        print(f"\n[CRITICAL ERROR] GUI Startfout: {e}")
+    except:
         sys.exit(1)
     
-    backend_thread = threading.Thread(target=kiku_backend_logic, daemon=True)
-    backend_thread.start()
+    threading.Thread(target=kiku_backend_logic, daemon=True).start()
     
     try:
         ui.start()

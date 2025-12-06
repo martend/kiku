@@ -1,101 +1,70 @@
-"""
-Vision Module (modules/vision.py)
-Verantwoordelijk voor het vastleggen en verwerken van beelden.
-Gebruikt de moderne libcamera/GStreamer stack voor Raspberry Pi OS "Trixie".
-"""
-import subprocess
-import sys
 import os
-from pathlib import Path
 import time
-
-# --- Import Fix ---
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-# ------------------
-
-# Importeer de configuratie
-from config import BASE_DIR
-
-# Map om tijdelijke beelden op te slaan
-VISION_DIR = BASE_DIR / "temp_vision"
-VISION_DIR.mkdir(exist_ok=True)
-
+import subprocess
 
 class KikuVision:
-    """Beheert de Raspberry Pi Camera."""
-
     def __init__(self):
-        print("[Vision] Initialisatie...")
-        self.output_path = VISION_DIR / "latest_snapshot.jpg"
-        self.is_ready = self._check_libcamera()
-        
-        if self.is_ready:
-            print("[Vision] libcamera/GStreamer lijkt beschikbaar.")
+        # We kijken welk commando beschikbaar is.
+        # Op nieuwe RPi OS is het 'rpicam-', op oudere 'libcamera-'.
+        self.cmd_prefix = None
+        if self._check_cmd("rpicam-hello"):
+            self.cmd_prefix = "rpicam"
+        elif self._check_cmd("libcamera-hello"):
+            self.cmd_prefix = "libcamera"
         else:
-             print("[Vision] WAARSCHUWING: libcamera-tools niet gevonden. Camerafuncties werken mogelijk niet.")
+            print("[Vision] ⚠️ GEEN rpicam/libcamera gevonden! Is de camera aangesloten?")
 
-    def _check_libcamera(self):
-        """Controleert of de rpicam-still utility geïnstalleerd is."""
-        try:
-            subprocess.run(['rpicam-still', '--help'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return True
-        except subprocess.CalledProcessError:
-             return False
-        except FileNotFoundError:
-             return False
+    def _check_cmd(self, cmd):
+        from shutil import which
+        return which(cmd) is not None
 
-    def capture_snapshot(self, filename="snapshot.jpg", width=1024, height=768, timeout=2000) -> Path | None:
+    def start_camera_preview(self, duration=5):
         """
-        Maakt een foto met behulp van de rpicam-still utility (via libcamera).
+        Toont live beeld direct op het scherm (HDMI overlay).
+        Dit blokkeert het script voor 'duration' seconden zodat je kunt richten.
         """
-        output_file = VISION_DIR / filename
-        
-        command = [
-            'rpicam-still',
-            '--output', str(output_file),
-            '--width', str(width),
-            '--height', str(height),
-            '--timeout', str(timeout),
-            '--nopreview',
-        ]
-        
-        print(f"[Vision] Beeld vastleggen: {output_file.name}...")
-        
-        try:
-            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if not self.cmd_prefix:
+            return False
             
-            if output_file.exists():
-                file_size = output_file.stat().st_size
-                # Controleer of het bestand groter is dan 2KB (niet leeg)
-                if file_size > 2048:
-                    print(f"[Vision] Succes: Beeld opgeslagen: {output_file} ({file_size / 1024:.1f} KB)")
-                    return output_file
-                else:
-                    print(f"[Vision] Fout: Bestand aangemaakt, maar is te klein ({file_size} bytes). Camerafout.")
-                    return None
-            else:
-                print("[Vision] Fout: Commando was succesvol, maar bestand niet gevonden.")
-                return None
-                
-        except subprocess.CalledProcessError as e:
-            print(f"[Vision] Fout bij vastleggen (rpicam-still error): {e}")
-            return None
-        except FileNotFoundError:
-             print("[Vision] Fout: 'rpicam-still' niet gevonden. Zorg dat rpicam-apps is geïnstalleerd.")
-             return None
-
-if __name__ == '__main__':
-    vision_system = KikuVision()
-    
-    if not vision_system.is_ready:
-        print("\nKan niet testen: libcamera-tools niet beschikbaar.")
-        exit()
+        print(f"[Vision] 🎥 Preview starten ({duration}s)...")
+        # -t: tijd in ms, -f: fullscreen, -n: geen preview (willen we juist wel!)
+        # We gebruiken --nopreview NIET, want we willen zien wat we doen.
+        cmd = f"{self.cmd_prefix}-hello -t {duration * 1000} -f"
         
-    print("\n--- Camera Snapshot Test (Check VISION_DIR) ---")
-    
-    snapshot_path = vision_system.capture_snapshot(filename="test_kiku_snap.jpg")
-    
-    if snapshot_path:
-        print(f"\nTest succesvol. Controleer het bestand op: {snapshot_path}")
+        try:
+            # We wachten tot het commando klaar is (dus na 5 seconden)
+            subprocess.run(cmd, shell=True, check=True)
+            return True
+        except Exception as e:
+            print(f"[Vision] Fout bij preview: {e}")
+            return False
+
+    def capture_snapshot(self):
+        """Maakt een foto en slaat deze op."""
+        if not self.cmd_prefix:
+            return None
+
+        filename = "snapshot.jpg"
+        path = os.path.abspath(os.path.join("temp_vision", filename))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        
+        print("[Vision] 📸 Foto maken...")
+        # -o: output, -t: timeout (kort, want we hebben al gericht), --width/height: resolutie
+        # -n: geen preview tijdens foto maken (sneller)
+        cmd = f"{self.cmd_prefix}-still -o {path} -t 500 --width 1920 --height 1080 -n"
+
+        try:
+            subprocess.run(cmd, shell=True, check=True)
+            if os.path.exists(path):
+                print(f"[Vision] Succes: {path}")
+                return path
+        except Exception as e:
+            print(f"[Vision] Fout bij foto: {e}")
+        
+        return None
+
+    # Dummy functies voor compatibiliteit met oude main.py calls
+    def start_camera(self): return True
+    def stop_camera(self): pass
+    def get_frame(self): return None 
+    def save_snapshot(self, frame=None): return self.capture_snapshot()

@@ -1,18 +1,23 @@
-# Python: Caches en Virtual Environment
-__pycache__/
-*.pyc
-*.pyo
-.pytest_cache/
-.mypy_cache/
-.venv/
-venv/
-env/
 
 # Besturingssysteem: Logbestanden en Systeem-Specifieke zaken
-logs/
+credentials.json
 .DS_Store
-Thumbs.db
-kluis/kikukey.json
-__pycache__/
-*.pyc
+.env
+env/
 kiku.db
+kluis/kikukey.json
+logs/
+.mypy_cache/
+*.pkl
+*.pyc
+__pycache__/
+*.pyo
+.pytest_cache/
+# Python: Caches en Virtual Environment
+temp_vision/
+Thumbs.db
+token.json
+.venv/
+venv/
+kiku-credentials.json
+credentials.json
