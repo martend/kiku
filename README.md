@@ -2,7 +2,7 @@
 
 **Versie:** 2.0 (Gemini 2.5 Flash Editie)  
 **Auteur:** Martin & Gemini  
-**Locatie:** Assen, NL  
+**Locatie:** NL
 
 ---
 
@@ -15,7 +15,7 @@ Kiku is een geavanceerde, multimodale AI-assistent die draait op een Raspberry P
     * Spreekt terug met een natuurlijke stem.
 3.  **👁️ Visie (Dual Mode):**
     * **Kijk-modus:** "Wat zie je?" -> Korte blik in de ruimte.
-    * **Scan-modus:** "Scan dit document/baxter" -> 5 seconden preview op scherm om te richten, daarna gedetailleerde analyse van tekst en medicijnen.
+    * **Scan-modus:** "Scan dit document/object" -> 5 seconden preview op scherm om te richten, daarna gedetailleerde analyse van tekst en medicijnen.
 4.  **📅 Agenda:** Volledige integratie met **Google Calendar**. Kiku leest je agenda, waarschuwt pro-actief voor afspraken en kan nieuwe items inplannen.
 5.  **🖥️ Interface:** Een Sci-Fi GUI op het touchscreen/HDMI scherm met:
     * Een levende, pulserende 3D 'Sphere' (reageert op luisteren/spreken/denken).
